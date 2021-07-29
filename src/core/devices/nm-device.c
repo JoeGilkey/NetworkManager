@@ -2650,7 +2650,7 @@ _assume_state_set(NMDevice *  self,
         && nm_streq0(priv->assume_state_connection_uuid, assume_state_connection_uuid))
         return;
 
-    _LOGD(LOGD_DEVICE,
+    _LOGE(LOGD_DEVICE,
           "assume-state: set guess-assume=%c, connection=%s%s%s",
           assume_state_guess_assume ? '1' : '0',
           NM_PRINT_FMT_QUOTE_STRING(assume_state_connection_uuid));
