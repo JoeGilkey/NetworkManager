@@ -8,8 +8,6 @@
 
 #include "nm-setting-ip4-config.h"
 #include "nm-setting-ip6-config.h"
-#include "nm-ip4-config.h"
-#include "nm-ip6-config.h"
 #include "nm-dhcp-utils.h"
 
 #define NM_DHCP_TIMEOUT_DEFAULT  ((guint32) 45) /* default DHCP timeout, in seconds */
@@ -34,9 +32,7 @@
 #define NM_DHCP_CLIENT_MULTI_IDX               "multi-idx"
 #define NM_DHCP_CLIENT_HOSTNAME                "hostname"
 #define NM_DHCP_CLIENT_MUD_URL                 "mud-url"
-#define NM_DHCP_CLIENT_ROUTE_METRIC            "route-metric"
-#define NM_DHCP_CLIENT_ROUTE_TABLE             "route-table"
-#define NM_DHCP_CLIENT_TIMEOUT                 "timeout"
+#define NM_DHCP_CLIENT_NO_LEASE_TIMEOUT        "no-lease-timeout"
 #define NM_DHCP_CLIENT_UUID                    "uuid"
 #define NM_DHCP_CLIENT_IAID                    "iaid"
 #define NM_DHCP_CLIENT_IAID_EXPLICIT           "iaid-explicit"
@@ -58,8 +54,36 @@ typedef enum {
     NM_DHCP_STATE_NOOP,       /* state is a non operation for NetworkManager */
 } NMDhcpState;
 
+typedef enum {
+    NM_DHCP_CLIENT_STATE_NO_LEASE,
+    NM_DHCP_CLIENT_STATE_NO_LEASE_WITH_TIMEOUT,
+    NM_DHCP_CLIENT_STATE_WITH_LEASE_INIT,
+    NM_DHCP_CLIENT_STATE_WITH_LEASE_ACCEPTED,
+    NM_DHCP_CLIENT_STATE_WITH_LEASE_DECLINED,
+} NMDhcpClientState;
+
 typedef enum _nm_packed {
-    NM_DHCP_CLIENT_NOTIFY_TYPE_STATE_CHANGED,
+    NM_DHCP_CLIENT_NOTIFY_TYPE_LEASE_UPDATE,
+
+    /* When NM_DHCP_CLIENT_NO_LEASE_TIMEOUT expired and the state
+     * switched from NM_DHCP_CLIENT_STATE_NO_LEASE to
+     * NM_DHCP_CLIENT_STATE_NO_LEASE_WITH_TIMEOUT. */
+    NM_DHCP_CLIENT_NOTIFY_TYPE_NO_LEASE_TIMEOUT,
+
+    /* NMDhcpClient will indefinitely try to get/renew the lease.
+     * As such, it's never officially in a non-recoverable state.
+     * However, there are cases when it really looks like we won't
+     * be able to get a lease. For example, if the underlying interface
+     * is layer 3 only, if we have no IPv6 link local address for a prolonged
+     * time, or if dhclient is not installed.
+     * But even these cases are potentially recoverable. This is only
+     * a hint to the user (which they might ignore).
+     *
+     * In particular, NM_DHCP_CLIENT_NOTIFY_TYPE_NO_LEASE_TIMEOUT might mean
+     * that the DHCP is currently not running, but that could change
+     * at any moment and from client's side, it does not look bad. */
+    NM_DHCP_CLIENT_NOTIFY_TYPE_IT_LOOKS_BAD,
+
     NM_DHCP_CLIENT_NOTIFY_TYPE_PREFIX_DELEGATED,
 } NMDhcpClientNotifyType;
 
@@ -67,16 +91,25 @@ typedef struct {
     NMDhcpClientNotifyType notify_type;
     union {
         struct {
-            NMIPConfig *ip_config;
-            GHashTable *options;
-            NMDhcpState dhcp_state;
-        } state_changed;
+            /* this is either the new lease information we just received,
+             * or NULL (if a previous lease timed out).
+             *
+             * If nm_dhcp_client_can_accept(), then the user first has to
+             * ACD the address (optionally), configure it and accept/decline
+             * it.
+             * If !nm_dhcp_client_can_accept(), then the lease is already
+             * accepted. */
+            const NML3ConfigData *l3cd;
+
+            NMDhcpClientState dhcp_state;
+        } lease_update;
         struct {
             const NMPlatformIP6Address *prefix;
         } prefix_delegated;
     };
 } NMDhcpClientNotifyData;
 
+const char *nm_dhcp_client_state_to_string(NMDhcpClientState state);
 const char *nm_dhcp_state_to_string(NMDhcpState state);
 
 struct _NMDhcpClientPrivate;
@@ -148,16 +181,6 @@ GBytes *nm_dhcp_client_get_broadcast_hw_addr(NMDhcpClient *self);
 
 const char *nm_dhcp_client_get_anycast_address(NMDhcpClient *self);
 
-guint32 nm_dhcp_client_get_route_table(NMDhcpClient *self);
-
-void nm_dhcp_client_set_route_table(NMDhcpClient *self, guint32 route_table);
-
-guint32 nm_dhcp_client_get_route_metric(NMDhcpClient *self);
-
-void nm_dhcp_client_set_route_metric(NMDhcpClient *self, guint32 route_metric);
-
-guint32 nm_dhcp_client_get_timeout(NMDhcpClient *self);
-
 guint32 nm_dhcp_client_get_iaid(NMDhcpClient *self);
 
 gboolean nm_dhcp_client_get_iaid_explicit(NMDhcpClient *self);
@@ -205,10 +228,8 @@ void nm_dhcp_client_watch_child(NMDhcpClient *self, pid_t pid);
 
 void nm_dhcp_client_stop_watch_child(NMDhcpClient *self, pid_t pid);
 
-void nm_dhcp_client_set_state(NMDhcpClient *self,
-                              NMDhcpState   new_state,
-                              NMIPConfig *  ip_config,
-                              GHashTable *  options); /* str:str hash */
+void
+nm_dhcp_client_set_state(NMDhcpClient *self, NMDhcpState new_state, const NML3ConfigData *l3cd);
 
 gboolean nm_dhcp_client_handle_event(gpointer      unused,
                                      const char *  iface,

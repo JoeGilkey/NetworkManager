@@ -1134,9 +1134,9 @@ _l3_acd_nacd_event_down_timeout_cb(gpointer user_data)
 static gboolean
 _l3_acd_nacd_event(int fd, GIOCondition condition, gpointer user_data)
 {
-    NML3Cfg *self    = user_data;
-    gboolean success = FALSE;
-    int      r;
+    gs_unref_object NML3Cfg *self    = g_object_ref(user_data);
+    gboolean                 success = FALSE;
+    int                      r;
 
     nm_assert(NM_IS_L3CFG(self));
     nm_assert(self->priv.p->nacd);
@@ -1152,6 +1152,13 @@ _l3_acd_nacd_event(int fd, GIOCondition condition, gpointer user_data)
         const NMEtherAddr *sender_addr;
         AcdData *          acd_data;
         NAcdEvent *        event;
+
+        if (!self->priv.p->nacd) {
+            /* In the loop we emit signals, where *anything* might happen.
+             * Check that we still have the nacd instance. */
+            success = TRUE;
+            goto out;
+        }
 
         r = n_acd_pop_event(self->priv.p->nacd, &event);
         if (r) {

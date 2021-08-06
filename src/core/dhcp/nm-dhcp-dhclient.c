@@ -530,7 +530,7 @@ ip4_start(NMDhcpClient *client, const char *last_ip4_address, GError **error)
         client_id,
         nm_dhcp_client_get_anycast_address(client),
         nm_dhcp_client_get_hostname(client),
-        nm_dhcp_client_get_timeout(client),
+        NM_DHCP_TIMEOUT_INFINITY, /* FIXME(simple-dhcp) */
         NM_FLAGS_HAS(nm_dhcp_client_get_client_flags(client), NM_DHCP_CLIENT_FLAGS_USE_FQDN),
         nm_dhcp_client_get_hostname_flags(client),
         nm_dhcp_client_get_mud_url(client),
@@ -570,7 +570,7 @@ ip6_start(NMDhcpClient *            client,
                                              NULL,
                                              nm_dhcp_client_get_anycast_address(client),
                                              nm_dhcp_client_get_hostname(client),
-                                             nm_dhcp_client_get_timeout(client),
+                                             NM_DHCP_TIMEOUT_INFINITY, /* FIXME(simple-dhcp) */
                                              TRUE,
                                              nm_dhcp_client_get_hostname_flags(client),
                                              nm_dhcp_client_get_mud_url(client),

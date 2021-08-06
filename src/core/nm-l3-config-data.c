@@ -2919,7 +2919,7 @@ nm_l3_config_data_new_clone(const NML3ConfigData *src, int ifindex)
     if (ifindex <= 0)
         ifindex = src->ifindex;
 
-    self = nm_l3_config_data_new(src->multi_idx, ifindex, NM_IP_CONFIG_SOURCE_UNKNOWN);
+    self = nm_l3_config_data_new(src->multi_idx, ifindex, src->source);
     nm_l3_config_data_merge(self,
                             src,
                             NM_L3_CONFIG_MERGE_FLAGS_CLONE,

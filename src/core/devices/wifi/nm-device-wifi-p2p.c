@@ -14,17 +14,17 @@
 
 #include "NetworkManagerUtils.h"
 #include "devices/nm-device-private.h"
-#include "nm-act-request.h"
 #include "libnm-core-intern/nm-core-internal.h"
 #include "libnm-glib-aux/nm-ref-string.h"
-#include "nm-ip4-config.h"
+#include "libnm-platform/nm-platform.h"
+#include "libnm-platform/nmp-object.h"
+#include "nm-act-request.h"
+#include "nm-l3-config-data.h"
 #include "nm-manager.h"
 #include "nm-manager.h"
 #include "nm-setting-wifi-p2p.h"
 #include "nm-utils.h"
 #include "nm-wifi-p2p-peer.h"
-#include "libnm-platform/nm-platform.h"
-#include "libnm-platform/nmp-object.h"
 #include "settings/nm-settings.h"
 
 #define _NMLOG_DEVICE_TYPE NMDeviceWifiP2P
@@ -555,10 +555,10 @@ remove_all_peers(NMDeviceWifiP2P *self)
 /*****************************************************************************/
 
 static NMActStageReturn
-act_stage3_ip_config_start(NMDevice *           device,
-                           int                  addr_family,
-                           gpointer *           out_config,
-                           NMDeviceStateReason *out_failure_reason)
+act_stage3_ip_config_start(NMDevice *             device,
+                           int                    addr_family,
+                           const NML3ConfigData **out_l3cd,
+                           NMDeviceStateReason *  out_failure_reason)
 {
     NMDeviceWifiP2PPrivate *priv = NM_DEVICE_WIFI_P2P_GET_PRIVATE(device);
     gboolean                indicate_addressing_running;
@@ -576,17 +576,17 @@ act_stage3_ip_config_start(NMDevice *           device,
         guint8    plen;
 
         if (nm_supplicant_interface_get_p2p_assigned_addr(priv->group_iface, &addr, &plen)) {
-            NMPlatformIP4Address address = {
+            nm_auto_unref_l3cd_init NML3ConfigData *l3cd    = NULL;
+            NMPlatformIP4Address                    address = {
                 .addr_source = NM_IP_CONFIG_SOURCE_DHCP,
             };
-            gs_unref_object NMIP4Config *ip4_config = NULL;
 
             nm_platform_ip4_address_set_addr(&address, addr, plen);
 
-            ip4_config = nm_device_ip4_config_new(device);
-            nm_ip4_config_add_address(ip4_config, &address);
+            l3cd = nm_device_create_l3_config_data(device, NM_IP_CONFIG_SOURCE_DHCP);
+            nm_l3_config_data_add_address_4(l3cd, &address);
 
-            nm_device_set_dev2_ip_config(device, AF_INET, NM_IP_CONFIG(ip4_config));
+            nm_device_set_dev2_ip_config(device, AF_INET, l3cd);
 
             /* This just disables the addressing indicator. */
             method = NM_SETTING_IP4_CONFIG_METHOD_DISABLED;
@@ -607,7 +607,7 @@ act_stage3_ip_config_start(NMDevice *           device,
                                                      TRUE);
 
     return NM_DEVICE_CLASS(nm_device_wifi_p2p_parent_class)
-        ->act_stage3_ip_config_start(device, addr_family, out_config, out_failure_reason);
+        ->act_stage3_ip_config_start(device, addr_family, out_l3cd, out_failure_reason);
 }
 
 static void
