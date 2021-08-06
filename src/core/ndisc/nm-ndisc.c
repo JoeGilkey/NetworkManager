@@ -96,6 +96,16 @@ static gboolean timeout_expire_cb(gpointer user_data);
 
 /*****************************************************************************/
 
+NM_UTILS_LOOKUP_STR_DEFINE(nm_ndisc_dhcp_level_to_string,
+                           NMNDiscDHCPLevel,
+                           NM_UTILS_LOOKUP_DEFAULT(NULL),
+                           NM_UTILS_LOOKUP_STR_ITEM(NM_NDISC_DHCP_LEVEL_UNKNOWN, "unknown"),
+                           NM_UTILS_LOOKUP_STR_ITEM(NM_NDISC_DHCP_LEVEL_NONE, "none"),
+                           NM_UTILS_LOOKUP_STR_ITEM(NM_NDISC_DHCP_LEVEL_OTHERCONF, "otherconf"),
+                           NM_UTILS_LOOKUP_STR_ITEM(NM_NDISC_DHCP_LEVEL_MANAGED, "managed"), );
+
+/*****************************************************************************/
+
 NML3ConfigData *
 nm_ndisc_data_to_l3cd(NMDedupMultiIndex *       multi_idx,
                       int                       ifindex,
