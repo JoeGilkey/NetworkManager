@@ -986,7 +986,7 @@ get_best_ip_config(NMPolicy *           self,
         if (vpn_state != NM_VPN_CONNECTION_STATE_ACTIVATED)
             continue;
 
-        l3cd = nm_vpn_connection_get_l3cd(candidate, addr_family);
+        l3cd = nm_vpn_connection_get_l3cd(candidate);
         if (!l3cd)
             continue;
 
@@ -2244,7 +2244,7 @@ vpn_connection_update_dns(NMPolicy *self, NMVpnConnection *vpn, gboolean remove)
         int                   addr_family = IS_IPv4 ? AF_INET : AF_INET6;
         const NML3ConfigData *l3cd;
 
-        l3cd = nm_vpn_connection_get_l3cd(vpn, addr_family);
+        l3cd = nm_vpn_connection_get_l3cd(vpn);
         nm_dns_manager_set_ip_config(priv->dns_manager,
                                      addr_family,
                                      vpn,
