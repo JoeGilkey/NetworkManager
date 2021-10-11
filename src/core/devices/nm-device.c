@@ -6408,7 +6408,14 @@ device_link_changed(gpointer user_data)
 
     if (priv->up && (!was_up || seen_down)) {
         /* the link was down and just came up. That happens for example, while changing MTU.
-         * We must restore IP configuration. */
+         * We must restore IP configuration.
+         *
+         * FIXME(l3cfg): when NML3Cfg notices that the device goes down and up, then
+         * it should automatically schedule a REAPPLY commit -- provided that the current
+         * commit-type is >= UPDATE. The idea is to move logic away from NMDevice
+         * so that it theoretically would also work for NMVpnConnection (although,
+         * NMVpnConnection should become like a regular device, akin to NMDevicePpp).
+         */
         nm_device_l3cfg_commit(self, NM_L3_CFG_COMMIT_TYPE_REAPPLY, FALSE);
     }
 
