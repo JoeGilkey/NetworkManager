@@ -3688,7 +3688,7 @@ _dev_l3_register_l3cds(NMDevice *self,
 /*****************************************************************************/
 
 void
-nm_device_l3cfg_commit(NMDevice *self, NML3CfgCommitType commit_type, gboolean do_sync)
+nm_device_l3cfg_commit(NMDevice *self, NML3CfgCommitType commit_type, gboolean commit_sync)
 {
     NMDevicePrivate *priv;
 
@@ -3699,7 +3699,10 @@ nm_device_l3cfg_commit(NMDevice *self, NML3CfgCommitType commit_type, gboolean d
     if (!priv->l3cfg)
         return;
 
-    if (!do_sync) {
+    /* FIXME(l3cfg): commit_sync should go away and not be used. The reason is that
+     * a commit does *a lot* of things which are outside the control of the caller,
+     * which makes it unsuitable to call in most cases. */
+    if (!commit_sync) {
         nm_l3cfg_commit_on_idle_schedule(priv->l3cfg, commit_type);
         return;
     }
@@ -3708,9 +3711,9 @@ nm_device_l3cfg_commit(NMDevice *self, NML3CfgCommitType commit_type, gboolean d
 }
 
 static void
-_dev_l3_cfg_commit(NMDevice *self, gboolean do_sync)
+_dev_l3_cfg_commit(NMDevice *self, gboolean commit_sync)
 {
-    nm_device_l3cfg_commit(self, NM_L3_CFG_COMMIT_TYPE_AUTO, do_sync);
+    nm_device_l3cfg_commit(self, NM_L3_CFG_COMMIT_TYPE_AUTO, commit_sync);
 }
 
 static void
@@ -9778,7 +9781,8 @@ _dev_ipdhcpx_handle_accept(NMDevice *self, int addr_family, const NML3ConfigData
      *   NMDhcpClient to accept the lease, it should only configure the address.
      *
      * - we should only accept the lease *after* configuring the address (see n_dhcp4_client_lease_accept().
-     *   Doing it here is wrong. */
+     *   Currently this only works by passing commit_sync=TRUE to _dev_l3_register_l3cds_set_one(), but
+     *   doing that is wrong (see FIXME why commit_sync needs to go away). */
     if (priv->ipdhcp_data_x[IS_IPv4].state != NM_DEVICE_IP_STATE_READY
         && !nm_dhcp_client_accept(priv->ipdhcp_data_x[IS_IPv4].client, &error)) {
         _LOGW(LOGD_DHCPX(IS_IPv4), "error accepting lease: %s", error->message);
