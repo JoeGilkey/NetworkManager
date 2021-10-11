@@ -9937,6 +9937,14 @@ _dev_ipdhcpx_start(NMDevice *self, int addr_family)
         }
     }
 
+    if (!IS_IPv4
+        && NM_IN_SET(priv->ipll_data_6.state,
+                     NM_DEVICE_IP_STATE_NONE,
+                     NM_DEVICE_IP_STATE_PENDING)) {
+        _dev_ipll6_start(self);
+        return;
+    }
+
     no_lease_timeout_sec = _prop_get_ipvx_dhcp_timeout(self, addr_family);
 
     if (IS_IPv4) {
@@ -11068,6 +11076,7 @@ _dev_ipac6_start(NMDevice *self)
 
     if (NM_IN_SET(priv->ipll_data_6.state, NM_DEVICE_IP_STATE_NONE, NM_DEVICE_IP_STATE_PENDING)) {
         _dev_ipac6_grace_period_start(self, 30, TRUE);
+        _dev_ipll6_start(self);
         return;
     }
 
