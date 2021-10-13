@@ -101,8 +101,6 @@ NM_GOBJECT_PROPERTIES_DEFINE(NMVpnConnection, PROP_VPN_STATE, PROP_BANNER,
 #define PROP_MASTER     2002
 );
 
-#define PROP_IPX_CONFIG(IS_IPv4) ((IS_IPv4) ? PROP_IP4_CONFIG : PROP_IP6_CONFIG)
-
 typedef struct {
     NMIPConfig *ip_config;
 
@@ -1788,15 +1786,22 @@ _config_process_generic(NMVpnConnection *self, GVariant *dict)
         return FALSE;
     }
 
-    for (IS_IPv4 = 1; IS_IPv4 <= 0; IS_IPv4--) {
+    for (IS_IPv4 = 1; IS_IPv4 >= 0; IS_IPv4--) {
+        NML3Cfg *l3cfg = priv->l3cfg_if ?: priv->l3cfg_dev;
+
+        if (priv->ip_data_x[IS_IPv4].ip_config
+            && l3cfg == nm_ip_config_get_l3cfg(priv->ip_data_x[IS_IPv4].ip_config))
+            continue;
+
         nm_ip_config_take_and_unexport_on_idle(
             g_steal_pointer(&priv->ip_data_x[IS_IPv4].ip_config));
-        if (priv->l3cfg_if) {
-            priv->ip_data_x[IS_IPv4].ip_config = nm_ip_config_new(IS_IPv4 ? AF_INET : AF_INET6,
-                                                                  priv->l3cfg_if ?: priv->l3cfg_dev,
-                                                                  TRUE);
+        if (l3cfg) {
+            priv->ip_data_x[IS_IPv4].ip_config =
+                nm_ip_config_new(IS_IPv4 ? AF_INET : AF_INET6, l3cfg, TRUE);
         }
-        _notify(self, PROP_IPX_CONFIG(IS_IPv4));
+        g_object_notify(G_OBJECT(self),
+                        IS_IPv4 ? NM_ACTIVE_CONNECTION_IP4_CONFIG
+                                : NM_ACTIVE_CONNECTION_IP6_CONFIG);
     }
 
     if (g_variant_lookup(dict, NM_VPN_PLUGIN_CAN_PERSIST, "b", &v_b) && v_b) {
