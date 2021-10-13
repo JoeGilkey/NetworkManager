@@ -407,12 +407,24 @@ _ipconfig_toggle_notify(gpointer data, GObject *object, gboolean is_last_ref)
     NML3Cfg *   self     = NM_L3CFG(data);
     NMIPConfig *ipconfig = NM_IP_CONFIG(object);
 
+    if (!is_last_ref) {
+        /* This happens while we take another ref below. Ignore the signal. */
+        nm_assert(!NM_IN_SET(ipconfig, self->priv.p->ipconfig_4, self->priv.p->ipconfig_6));
+        return;
+    }
+
     if (ipconfig == self->priv.p->ipconfig_4)
         self->priv.p->ipconfig_4 = NULL;
     else {
         nm_assert(ipconfig == self->priv.p->ipconfig_6);
         self->priv.p->ipconfig_6 = NULL;
     }
+
+    /* We take a second reference to keep the instance alive, while also removing the
+     * toggle ref. This will notify the function again, but we will ignore that. */
+    g_object_ref(ipconfig);
+
+    g_object_remove_toggle_ref(G_OBJECT(ipconfig), _ipconfig_toggle_notify, self);
 
     /* pass on the reference, and unexport on idle. */
     nm_ip_config_take_and_unexport_on_idle(g_steal_pointer(&ipconfig));
