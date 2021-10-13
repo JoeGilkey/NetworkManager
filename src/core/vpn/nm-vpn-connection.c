@@ -2811,28 +2811,52 @@ out:
 static void
 device_changed(NMActiveConnection *active, NMDevice *new_device, NMDevice *old_device)
 {
-    NMVpnConnectionPrivate *priv = NM_VPN_CONNECTION_GET_PRIVATE(active);
+    NMVpnConnection *       self       = NM_VPN_CONNECTION(active);
+    NMVpnConnectionPrivate *priv       = NM_VPN_CONNECTION_GET_PRIVATE(active);
+    gs_unref_object NML3Cfg *l3cfg_old = NULL;
+    int                      ifindex;
 
-    if (!_service_and_connection_can_persist(NM_VPN_CONNECTION(active)))
+    if (!priv->generic_config_received)
         return;
-    if (priv->vpn_state < STATE_CONNECT || priv->vpn_state > STATE_ACTIVATED)
+    if (priv->vpn_state > STATE_ACTIVATED)
+        return;
+    if (!_service_and_connection_can_persist(self))
         return;
 
-    /* Route-based VPNs must update their routing and send a new IP config
-     * since all their routes need to be adjusted for new_device.
-     */
-    //XXX if (priv->ip_ifindex <= 0)
-    //XXX     return;
+    if (priv->ifindex_if <= 0) {
+        /* Route-based VPNs must updvate their routing and send a new IP config
+         * since all their routes need to be adjusted for new_device.
+         */
+        return;
+    }
 
-    //XXX /* Device changed underneath the VPN connection.  Let the plugin figure
-    //XXX  * out that connectivity is down and start its reconnect attempt if it
-    //XXX  * needs to.
-    //XXX  */
-    //XXX if (old_device)
-    //XXX     _parent_device_remove_config(NM_VPN_CONNECTION(active), old_device);
+    ifindex = _get_ifindex_for_device(self);
+    if (ifindex <= 0)
+        return;
+    if (priv->ifindex_dev == ifindex)
+        return;
 
-    //XXX if (new_device)
-    //XXX     _parent_device_apply_config(NM_VPN_CONNECTION(active));
+    _LOGD("set ip-ifindex-dev %d (was %d)", ifindex, priv->ifindex_dev);
+
+    l3cfg_old = g_steal_pointer(&priv->l3cfg_dev);
+    nm_l3cfg_commit_type_clear(l3cfg_old, &priv->l3cfg_commit_type_dev);
+    _l3cfg_clear(self, l3cfg_old);
+
+    priv->ifindex_dev = ifindex;
+    if (ifindex > 0) {
+        priv->l3cfg_dev = nm_netns_access_l3cfg(priv->netns, ifindex);
+        g_signal_connect(priv->l3cfg_dev,
+                         NM_L3CFG_SIGNAL_NOTIFY,
+                         G_CALLBACK(_l3cfg_notify_cb),
+                         self);
+        priv->l3cfg_commit_type_dev = nm_l3cfg_commit_type_register(priv->l3cfg_dev,
+                                                                    NM_L3_CFG_COMMIT_TYPE_UPDATE,
+                                                                    NULL,
+                                                                    "vpn");
+    }
+
+    if (_l3cfg_l3cd_gw_extern_update(self))
+        nm_l3cfg_commit_on_idle_schedule(priv->l3cfg_dev, NM_L3_CFG_COMMIT_TYPE_AUTO);
 }
 
 /*****************************************************************************/
