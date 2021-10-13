@@ -3924,7 +3924,7 @@ _set_ifindex(NMDevice *self, int ifindex, gboolean is_ip_ifindex)
         }
     }
     if (!priv->l3cfg && ip_ifindex_new > 0) {
-        priv->l3cfg_ = nm_netns_access_l3cfg(priv->netns, ip_ifindex_new);
+        priv->l3cfg_ = nm_netns_l3cfg_acquire(priv->netns, ip_ifindex_new);
 
         g_signal_connect(priv->l3cfg,
                          NM_L3CFG_SIGNAL_NOTIFY,

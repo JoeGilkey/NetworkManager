@@ -60,7 +60,7 @@ main(int argc, char **argv)
                         &router_solicitation_interval,
                         &ra_timeout);
 
-    l3cfg = nm_netns_access_l3cfg(NM_NETNS_GET, ifindex);
+    l3cfg = nm_netns_l3cfg_acquire(NM_NETNS_GET, ifindex);
 
     config = (NMNDiscConfig){
         .l3cfg                        = l3cfg,

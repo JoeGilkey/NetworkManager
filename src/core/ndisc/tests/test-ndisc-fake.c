@@ -25,7 +25,7 @@ ndisc_new(void)
     const int                ifindex = 1;
     NMUtilsIPv6IfaceId       iid;
 
-    l3cfg = nm_netns_access_l3cfg(NM_NETNS_GET, ifindex);
+    l3cfg = nm_netns_l3cfg_acquire(NM_NETNS_GET, ifindex);
 
     ndisc = nm_fake_ndisc_new(l3cfg);
     g_assert(ndisc);

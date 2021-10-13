@@ -865,7 +865,7 @@ _set_ip_ifindex(NMVpnConnection *self, int ifindex, gboolean is_if)
     _l3cfg_clear(self, l3cfg_old);
 
     if (ifindex > 0) {
-        *p_l3cfg = nm_netns_access_l3cfg(priv->netns, ifindex);
+        *p_l3cfg = nm_netns_l3cfg_acquire(priv->netns, ifindex);
         g_signal_connect(*p_l3cfg, NM_L3CFG_SIGNAL_NOTIFY, G_CALLBACK(_l3cfg_notify_cb), self);
         *p_l3cfg_commit_type =
             nm_l3cfg_commit_type_register(*p_l3cfg, NM_L3_CFG_COMMIT_TYPE_UPDATE, NULL, "vpn");
@@ -2845,7 +2845,7 @@ device_changed(NMActiveConnection *active, NMDevice *new_device, NMDevice *old_d
 
     priv->ifindex_dev = ifindex;
     if (ifindex > 0) {
-        priv->l3cfg_dev = nm_netns_access_l3cfg(priv->netns, ifindex);
+        priv->l3cfg_dev = nm_netns_l3cfg_acquire(priv->netns, ifindex);
         g_signal_connect(priv->l3cfg_dev,
                          NM_L3CFG_SIGNAL_NOTIFY,
                          G_CALLBACK(_l3cfg_notify_cb),
