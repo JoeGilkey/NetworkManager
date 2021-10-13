@@ -20,8 +20,7 @@
 #define NM_IP_CONFIG_GET_CLASS(obj) \
     (G_TYPE_INSTANCE_GET_CLASS((obj), NM_TYPE_IP_CONFIG, NMIPConfigClass))
 
-#define NM_IP_CONFIG_L3CFG  "l3cfg"
-#define NM_IP_CONFIG_IS_VPN "is-vpn"
+#define NM_IP_CONFIG_L3CFG "l3cfg"
 
 struct _NMIPConfigPrivate {
     NML3Cfg *             l3cfg;
@@ -35,7 +34,6 @@ struct _NMIPConfigPrivate {
         NMIPAddr         addr;
     } v_gateway;
     gulong l3cfg_notify_id;
-    bool   is_vpn : 1;
 };
 
 struct _NMIPConfig {
@@ -50,7 +48,7 @@ typedef struct {
 
 GType nm_ip_config_get_type(void);
 
-NMIPConfig *nm_ip_config_new(int addr_family, NML3Cfg *l3cfg, gboolean is_vpn);
+NMIPConfig *nm_ip_config_new(int addr_family, NML3Cfg *l3cfg);
 
 void nm_ip_config_take_and_unexport_on_idle(NMIPConfig *self_take);
 

@@ -1787,17 +1787,13 @@ _config_process_generic(NMVpnConnection *self, GVariant *dict)
     }
 
     for (IS_IPv4 = 1; IS_IPv4 >= 0; IS_IPv4--) {
-        NML3Cfg *l3cfg = priv->l3cfg_if ?: priv->l3cfg_dev;
+        NML3Cfg *       l3cfg                    = priv->l3cfg_if ?: priv->l3cfg_dev;
+        gs_unref_object NMIPConfig *ipconfig_old = NULL;
 
-        if (priv->ip_data_x[IS_IPv4].ip_config
-            && l3cfg == nm_ip_config_get_l3cfg(priv->ip_data_x[IS_IPv4].ip_config))
-            continue;
-
-        nm_ip_config_take_and_unexport_on_idle(
-            g_steal_pointer(&priv->ip_data_x[IS_IPv4].ip_config));
+        ipconfig_old = g_steal_pointer(&priv->ip_data_x[IS_IPv4].ip_config);
         if (l3cfg) {
             priv->ip_data_x[IS_IPv4].ip_config =
-                nm_ip_config_new(IS_IPv4 ? AF_INET : AF_INET6, l3cfg, TRUE);
+                nm_l3cfg_ipconfig_acquire(l3cfg, IS_IPv4 ? AF_INET : AF_INET6);
         }
         g_object_notify(G_OBJECT(self),
                         IS_IPv4 ? NM_ACTIVE_CONNECTION_IP4_CONFIG
@@ -2963,6 +2959,9 @@ dispose(GObject *object)
 
     if (nm_l3cfg_commit_type_clear(priv->l3cfg_dev, &priv->l3cfg_commit_type_dev))
         nm_l3cfg_commit_on_idle_schedule(priv->l3cfg_dev, NM_L3_CFG_COMMIT_TYPE_AUTO);
+
+    g_clear_object(&priv->ip_data_4.ip_config);
+    g_clear_object(&priv->ip_data_6.ip_config);
 
     dispatcher_cleanup(self);
 

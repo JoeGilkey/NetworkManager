@@ -3957,11 +3957,14 @@ _set_ifindex(NMDevice *self, int ifindex, gboolean is_ip_ifindex)
         _notify(self, PROP_IFINDEX);
 
     if (l3cfg_was_reset) {
-        nm_ip_config_take_and_unexport_on_idle(g_steal_pointer(&priv->l3ipdata_4.ip_config));
-        nm_ip_config_take_and_unexport_on_idle(g_steal_pointer(&priv->l3ipdata_6.ip_config));
+        gs_unref_object NMIPConfig *ipconf_old_4 = NULL;
+        gs_unref_object NMIPConfig *ipconf_old_6 = NULL;
+
+        ipconf_old_4 = g_steal_pointer(&priv->l3ipdata_4.ip_config);
+        ipconf_old_6 = g_steal_pointer(&priv->l3ipdata_6.ip_config);
         if (priv->l3cfg) {
-            priv->l3ipdata_4.ip_config = nm_ip_config_new(AF_INET, priv->l3cfg, FALSE);
-            priv->l3ipdata_6.ip_config = nm_ip_config_new(AF_INET6, priv->l3cfg, FALSE);
+            priv->l3ipdata_4.ip_config = nm_l3cfg_ipconfig_acquire(priv->l3cfg, AF_INET);
+            priv->l3ipdata_6.ip_config = nm_l3cfg_ipconfig_acquire(priv->l3cfg, AF_INET6);
         }
         _notify(self, PROP_IP4_CONFIG);
         _notify(self, PROP_IP6_CONFIG);
@@ -17101,6 +17104,10 @@ dispose(GObject *object)
         nm_g_slice_free(priv->sriov.next);
         priv->sriov.next = NULL;
     }
+
+    g_clear_object(&priv->l3cfg);
+    g_clear_object(&priv->l3ipdata_4.ip_config);
+    g_clear_object(&priv->l3ipdata_6.ip_config);
 
     G_OBJECT_CLASS(nm_device_parent_class)->dispose(object);
 

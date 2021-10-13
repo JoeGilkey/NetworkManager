@@ -35,7 +35,6 @@ typedef struct _NMIPConfigPrivate NMIPConfigPrivate;
 NM_GOBJECT_PROPERTIES_DEFINE_FULL(_ip,
                                   NMIPConfig,
                                   PROP_IP_L3CFG,
-                                  PROP_IP_IS_VPN,
                                   PROP_IP_ADDRESS_DATA,
                                   PROP_IP_GATEWAY,
                                   PROP_IP_ROUTE_DATA,
@@ -148,10 +147,6 @@ set_property(GObject *object, guint prop_id, const GValue *value, GParamSpec *ps
         nm_assert(NM_IS_L3CFG(ptr));
         priv->l3cfg = g_object_ref(ptr);
         break;
-    case PROP_IP_IS_VPN:
-        /* construct-only */
-        priv->is_vpn = g_value_get_boolean(value);
-        break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
         break;
@@ -165,7 +160,7 @@ nm_ip_config_init(NMIPConfig *self)
 {}
 
 NMIPConfig *
-nm_ip_config_new(int addr_family, NML3Cfg *l3cfg, gboolean is_vpn)
+nm_ip_config_new(int addr_family, NML3Cfg *l3cfg)
 {
     nm_assert_addr_family(addr_family);
     nm_assert(NM_L3CFG(l3cfg));
@@ -174,8 +169,6 @@ nm_ip_config_new(int addr_family, NML3Cfg *l3cfg, gboolean is_vpn)
                                                 : nm_ip6_config_get_type(),
                         NM_IP_CONFIG_L3CFG,
                         l3cfg,
-                        NM_IP_CONFIG_IS_VPN,
-                        is_vpn,
                         NULL);
 }
 
@@ -241,13 +234,6 @@ nm_ip_config_class_init(NMIPConfigClass *klass)
         g_param_spec_pointer(NM_IP_CONFIG_L3CFG,
                              "",
                              "",
-                             G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
-
-    obj_properties_ip[PROP_IP_IS_VPN] =
-        g_param_spec_boolean(NM_IP_CONFIG_IS_VPN,
-                             "",
-                             "",
-                             FALSE,
                              G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
 
     obj_properties_ip[PROP_IP_ADDRESS_DATA] =
