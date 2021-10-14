@@ -268,6 +268,8 @@ typedef struct _NML3CfgPrivate {
 
     gint8 commit_reentrant_count;
 
+    NMSettingIP6ConfigPrivacy ip6_privacy;
+
     bool commit_type_update_sticky : 1;
 
     bool acd_is_pending : 1;
@@ -3726,6 +3728,21 @@ out_prune:
 }
 
 /*****************************************************************************/
+static const char *
+ip6_privacy_to_str(NMSettingIP6ConfigPrivacy ip6_privacy)
+{
+    switch (ip6_privacy) {
+    case NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN:
+    case NM_SETTING_IP6_CONFIG_PRIVACY_DISABLED:
+        return "0";
+    case NM_SETTING_IP6_CONFIG_PRIVACY_PREFER_PUBLIC_ADDR:
+        return "1";
+    case NM_SETTING_IP6_CONFIG_PRIVACY_PREFER_TEMP_ADDR:
+        return "2";
+    default:
+        g_return_val_if_reached("0");
+    }
+}
 
 static gboolean
 _l3_commit_one(NML3Cfg *             self,
@@ -3758,11 +3775,13 @@ _l3_commit_one(NML3Cfg *             self,
           _l3_cfg_commit_type_to_string(commit_type, sbuf_commit_type, sizeof(sbuf_commit_type)));
 
     if (self->priv.p->combined_l3cd_commited) {
+        NMSettingIP6ConfigPrivacy     ip6_privacy;
         const NMDedupMultiHeadEntry * head_entry;
         const ObjStatesSyncFilterData sync_filter_data = {
             .self        = self,
             .commit_type = commit_type,
         };
+        const char *ifname;
 
         head_entry = nm_l3_config_data_lookup_objs(self->priv.p->combined_l3cd_commited,
                                                    NMP_OBJECT_TYPE_IP_ADDRESS(IS_IPv4));
@@ -3779,6 +3798,22 @@ _l3_commit_one(NML3Cfg *             self,
         route_table_sync =
             nm_l3_config_data_get_route_table_sync(self->priv.p->combined_l3cd_commited,
                                                    addr_family);
+
+        ifname = nm_platform_link_get_name(self->priv.platform, self->priv.ifindex);
+
+        if (!IS_IPv4) {
+            ip6_privacy = nm_l3_config_data_get_ip6_privacy(self->priv.p->combined_l3cd_commited);
+            if (self->priv.p->ip6_privacy != ip6_privacy) {
+                self->priv.p->ip6_privacy = ip6_privacy;
+                if (ifname && ip6_privacy != NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN) {
+                    nm_platform_sysctl_ip_conf_set(self->priv.platform,
+                                                   addr_family,
+                                                   ifname,
+                                                   "use_tempaddr",
+                                                   ip6_privacy_to_str(ip6_privacy));
+                }
+            }
+        }
     }
 
     if (route_table_sync == NM_IP_ROUTE_TABLE_SYNC_MODE_NONE)
@@ -3797,7 +3832,6 @@ _l3_commit_one(NML3Cfg *             self,
     } else
         _obj_state_zombie_lst_get_prune_lists(self, addr_family, &addresses_prune, &routes_prune);
 
-    /* FIXME(l3cfg): need to honor and set nm_l3_config_data_get_ip6_privacy(). */
     /* FIXME(l3cfg): need to honor and set nm_l3_config_data_get_ndisc_*(). */
     /* FIXME(l3cfg): need to honor and set nm_l3_config_data_get_ip6_mtu(). */
     /* FIXME(l3cfg): need to honor and set nm_l3_config_data_get_mtu(). */
