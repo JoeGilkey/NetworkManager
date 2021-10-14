@@ -605,9 +605,15 @@ typedef struct _NMDevicePrivate {
     };
 
     struct {
-        GSource *       carrier_timeout;
-        NMDeviceIPState state;
-        bool            carrier_timeout_expired;
+        GSource *carrier_timeout;
+        union {
+            union {
+                NMDeviceIPState state_6;
+                NMDeviceIPState state_4;
+            };
+            NMDeviceIPState state_x[2];
+        };
+        bool carrier_timeout_expired;
     } ipmanual_data;
 
     union {
@@ -887,7 +893,7 @@ static gboolean _get_maybe_ipv6_disabled(NMDevice *self);
 #define _LOGI_ipac6(...)         _NMLOG_ipac6(LOGL_INFO, __VA_ARGS__)
 #define _LOGW_ipac6(...)         _NMLOG_ipac6(LOGL_WARN, __VA_ARGS__)
 
-#define _NMLOG_ipmanual(level, ...) _NMLOG_addr_family(level, "ip:manual", AF_UNSPEC, __VA_ARGS__)
+#define _NMLOG_ipmanual(level, ...) _NMLOG_addr_family(level, "ip:manual", __VA_ARGS__)
 #define _LOGT_ipmanual(...)         _NMLOG_ipmanual(LOGL_TRACE, __VA_ARGS__)
 #define _LOGD_ipmanual(...)         _NMLOG_ipmanual(LOGL_DEBUG, __VA_ARGS__)
 #define _LOGI_ipmanual(...)         _NMLOG_ipmanual(LOGL_INFO, __VA_ARGS__)
@@ -3113,7 +3119,7 @@ _dev_ip_state_check(NMDevice *self, int addr_family)
         goto got_ip_state;
     }
 
-    _device_ip_state_accumulate(priv->ipmanual_data.state,
+    _device_ip_state_accumulate(priv->ipmanual_data.state_x[IS_IPv4],
                                 &s_is_started,
                                 &s_is_pending,
                                 &s_is_failed);
@@ -3181,7 +3187,7 @@ got_ip_state:
     _LOGT_ip(addr_family,
              "check-state: state %s => %s, is_failed=%d, is_pending=%d, is_started=%d, "
              "may-fail-4=%d, may-fail-6=%d;"
-             "%s%s;%s%s%s%s%s;%s%s%s%s%s%s%s",
+             "%s;%s%s%s%s%s%s;%s%s%s%s%s%s%s%s",
              nm_device_ip_state_to_string(priv->ip_data_x[IS_IPv4].state),
              nm_device_ip_state_to_string(ip_state),
              s_is_failed,
@@ -3189,8 +3195,8 @@ got_ip_state:
              s_is_started,
              _prop_get_ipvx_may_fail_cached(self, AF_INET, IS_IPv4 ? &may_fail : &may_fail_other),
              _prop_get_ipvx_may_fail_cached(self, AF_INET6, !IS_IPv4 ? &may_fail : &may_fail_other),
-             _state_str_a(priv->ipmanual_data.state, "manualip"),
              priv->ip_data_4.is_disabled ? " disabled4" : "",
+             _state_str_a(priv->ipmanual_data.state_4, "manualip4"),
              _state_str_a(priv->ipdev_data_unspec.state, "dev"),
              _state_str_a(priv->ipll_data_4.state, "ll4"),
              _state_str_a(priv->ipdhcp_data_4.state, "dhcp4"),
@@ -3198,6 +3204,7 @@ got_ip_state:
              _state_str_a(priv->ipshared_data_4.state, "shared4"),
              priv->ip_data_6.is_disabled ? " disabled6" : "",
              priv->ip_data_6.is_ignore ? " ignore6" : "",
+             _state_str_a(priv->ipmanual_data.state_6, "manualip6"),
              _state_str_a(priv->ipll_data_6.state, "ll6"),
              _state_str_a(priv->ipac6_data.state, "ac6"),
              _state_str_a(priv->ipdhcp_data_6.state, "dhcp6"),
@@ -9589,13 +9596,21 @@ nm_device_devip_set_state_full(NMDevice *            self,
 /*****************************************************************************/
 
 static void
-_dev_ipmanual_set_state(NMDevice *self, NMDeviceIPState state)
+_dev_ipmanual_set_state(NMDevice *self, int addr_family, NMDeviceIPState state)
 {
     NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE(self);
+    int              IS_IPv4;
 
-    if (priv->ipmanual_data.state != state) {
-        _LOGD_ipmanual("set state %s", nm_device_ip_state_to_string(state));
-        priv->ipmanual_data.state = state;
+    if (addr_family == AF_UNSPEC) {
+        _dev_ipmanual_set_state(self, AF_INET, state);
+        _dev_ipmanual_set_state(self, AF_INET6, state);
+        return;
+    }
+
+    IS_IPv4 = NM_IS_IPv4(addr_family);
+    if (priv->ipmanual_data.state_x[IS_IPv4] != state) {
+        _LOGD_ipmanual(addr_family, "set state %s", nm_device_ip_state_to_string(state));
+        priv->ipmanual_data.state_x[IS_IPv4] = state;
     }
 }
 
@@ -9604,12 +9619,13 @@ _dev_ipmanual_cleanup(NMDevice *self)
 {
     NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE(self);
 
-    if (priv->ipmanual_data.state == NM_DEVICE_IP_STATE_NONE) {
+    if (priv->ipmanual_data.state_4 == NM_DEVICE_IP_STATE_NONE
+        && priv->ipmanual_data.state_6 == NM_DEVICE_IP_STATE_NONE) {
         nm_assert(!priv->l3cds[L3_CONFIG_DATA_TYPE_MANUALIP].d);
         return;
     }
 
-    _dev_ipmanual_set_state(self, NM_DEVICE_IP_STATE_NONE);
+    _dev_ipmanual_set_state(self, AF_UNSPEC, NM_DEVICE_IP_STATE_NONE);
     nm_clear_g_source_inst(&priv->ipmanual_data.carrier_timeout);
     priv->ipmanual_data.carrier_timeout_expired = FALSE;
 
@@ -9640,8 +9656,10 @@ _dev_ipmanual_check_ready(NMDevice *self)
     NML3CfgCheckReadyFlags flags;
     gboolean               ready;
     gboolean               acd_used = FALSE;
+    int                    IS_IPv4;
 
-    if (priv->ipmanual_data.state != NM_DEVICE_IP_STATE_PENDING) {
+    if (priv->ipmanual_data.state_4 != NM_DEVICE_IP_STATE_PENDING
+        && priv->ipmanual_data.state_6 != NM_DEVICE_IP_STATE_PENDING) {
         /* we only care about PENDING to get it READY. Currently not other
          * conditions are implemented. That is, we cannot get to FAILED
          * (maybe we should, if DAD fails) and we cannot get from anything
@@ -9673,16 +9691,21 @@ _dev_ipmanual_check_ready(NMDevice *self)
         flags |= NM_L3CFG_CHECK_READY_FLAGS_IP6_DAD_READY;
     }
 
-    ready = nm_l3cfg_check_ready(priv->l3cfg,
-                                 priv->l3cds[L3_CONFIG_DATA_TYPE_MANUALIP].d,
-                                 flags,
-                                 &acd_used);
-    if (acd_used) {
-        _dev_ipmanual_set_state(self, NM_DEVICE_IP_STATE_FAILED);
-        _dev_ip_state_check_async(self, AF_UNSPEC);
-    } else if (ready) {
-        _dev_ipmanual_set_state(self, NM_DEVICE_IP_STATE_READY);
-        _dev_ip_state_check_async(self, AF_UNSPEC);
+    for (IS_IPv4 = 0; IS_IPv4 < 2; IS_IPv4++) {
+        const int addr_family = IS_IPv4 ? AF_INET : AF_INET6;
+
+        ready = nm_l3cfg_check_ready(priv->l3cfg,
+                                     priv->l3cds[L3_CONFIG_DATA_TYPE_MANUALIP].d,
+                                     addr_family,
+                                     flags,
+                                     &acd_used);
+        if (acd_used) {
+            _dev_ipmanual_set_state(self, addr_family, NM_DEVICE_IP_STATE_FAILED);
+            _dev_ip_state_check_async(self, AF_UNSPEC);
+        } else if (ready) {
+            _dev_ipmanual_set_state(self, addr_family, NM_DEVICE_IP_STATE_READY);
+            _dev_ip_state_check_async(self, AF_UNSPEC);
+        }
     }
 }
 
@@ -9692,7 +9715,8 @@ _dev_ipmanual_start(NMDevice *self)
     NMDevicePrivate *        priv                 = NM_DEVICE_GET_PRIVATE(self);
     nm_auto_unref_l3cd const NML3ConfigData *l3cd = NULL;
 
-    if (priv->ipmanual_data.state != NM_DEVICE_IP_STATE_NONE)
+    if (priv->ipmanual_data.state_4 != NM_DEVICE_IP_STATE_NONE
+        || priv->ipmanual_data.state_6 != NM_DEVICE_IP_STATE_NONE)
         return;
 
     if (nm_device_get_ip_ifindex(self) > 0) {
@@ -9707,7 +9731,7 @@ _dev_ipmanual_start(NMDevice *self)
     }
 
     /* Initially we set the state to pending, because we (maybe) have to perform ACD first. */
-    _dev_ipmanual_set_state(self, NM_DEVICE_IP_STATE_PENDING);
+    _dev_ipmanual_set_state(self, AF_UNSPEC, NM_DEVICE_IP_STATE_PENDING);
 
     _dev_l3_register_l3cds_set_one(self, L3_CONFIG_DATA_TYPE_MANUALIP, l3cd, FALSE);
 
