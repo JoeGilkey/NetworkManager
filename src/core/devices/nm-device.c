@@ -11427,6 +11427,9 @@ activate_stage3_ip_config_for_addr_family(NMDevice *self, int addr_family)
         method = klass->get_ip_method_auto(self, addr_family);
     }
 
+    if (klass->ready_for_ip_config && !klass->ready_for_ip_config(self))
+        goto out_devip;
+
     _dev_ipmanual_start(self);
 
     if (IS_IPv4) {
@@ -11512,6 +11515,7 @@ activate_stage3_ip_config_for_addr_family(NMDevice *self, int addr_family)
         }
     }
 
+out_devip:
     if (klass->act_stage3_ip_config)
         klass->act_stage3_ip_config(self, addr_family);
 

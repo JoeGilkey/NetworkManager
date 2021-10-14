@@ -345,6 +345,7 @@ typedef struct _NMDeviceClass {
     NMActStageReturn (*act_stage1_prepare)(NMDevice *self, NMDeviceStateReason *out_failure_reason);
     NMActStageReturn (*act_stage2_config)(NMDevice *self, NMDeviceStateReason *out_failure_reason);
     void (*act_stage3_ip_config)(NMDevice *self, int addr_family);
+    gboolean (*ready_for_ip_config)(NMDevice *self);
 
     const char *(*get_ip_method_auto)(NMDevice *self, int addr_family);
 
