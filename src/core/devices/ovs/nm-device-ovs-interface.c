@@ -210,6 +210,13 @@ act_stage3_ip_config(NMDevice *device, int addr_family)
         return;
     }
 
+    /* FIXME(l3cfg): we should create the IP ifindex before stage3 start.
+     *
+     * For now it's here because when the ovs-interface enters stage3, then it's added to the
+     * controller (ovs-port) and the entry is create in the ovsdb. Only after that the kernel
+     * link appears.
+     *
+     * This should change. */
     if (nm_device_get_ip_ifindex(device) <= 0) {
         _LOGT(LOGD_DEVICE, "waiting for link to appear");
         priv->waiting_for_interface = TRUE;
