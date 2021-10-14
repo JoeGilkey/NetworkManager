@@ -3833,7 +3833,6 @@ _l3_commit_one(NML3Cfg *             self,
         _obj_state_zombie_lst_get_prune_lists(self, addr_family, &addresses_prune, &routes_prune);
 
     /* FIXME(l3cfg): need to honor and set nm_l3_config_data_get_ndisc_*(). */
-    /* FIXME(l3cfg): need to honor and set nm_l3_config_data_get_ip6_mtu(). */
     /* FIXME(l3cfg): need to honor and set nm_l3_config_data_get_mtu(). */
 
     nm_platform_ip_address_sync(self->priv.platform,

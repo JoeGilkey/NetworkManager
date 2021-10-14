@@ -3808,9 +3808,16 @@ _dev_l3_cfg_notify_cb(NML3Cfg *l3cfg, const NML3ConfigNotifyData *notify_data, N
         return;
     }
     case NM_L3_CONFIG_NOTIFY_TYPE_PRE_COMMIT:
+    {
+        const NML3ConfigData *l3cd;
+
         /* FIXME(l3cfg): MTU handling should be moved to l3cfg. */
+        l3cd = nm_l3cfg_get_combined_l3cd(l3cfg, TRUE);
+        if (l3cd)
+            priv->ip6_mtu = nm_l3_config_data_get_ip6_mtu(l3cd);
         _commit_mtu(self);
         return;
+    }
     case NM_L3_CONFIG_NOTIFY_TYPE_POST_COMMIT:
         _dev_ipmanual_check_ready(self);
         return;
