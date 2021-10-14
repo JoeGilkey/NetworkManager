@@ -268,7 +268,17 @@ typedef struct _NML3CfgPrivate {
 
     gint8 commit_reentrant_count;
 
-    NMSettingIP6ConfigPrivacy ip6_privacy;
+    /* The value that was set before we touched the sysctl (this only is
+     * meaningful if "ip6_privacy_set" is true. At the end, we want to restore
+     * this value. */
+    NMSettingIP6ConfigPrivacy ip6_privacy_initial : 4;
+
+    /* The value that we set the last time. This is cached so that we don't
+     * repeatedly try to commit the same value. */
+    NMSettingIP6ConfigPrivacy ip6_privacy_set_before : 4;
+
+    /* Whether "self" set the ip6_privacy sysctl (and whether it needs to be reset). */
+    bool ip6_privacy_set : 1;
 
     bool commit_type_update_sticky : 1;
 
@@ -3732,16 +3742,125 @@ static const char *
 ip6_privacy_to_str(NMSettingIP6ConfigPrivacy ip6_privacy)
 {
     switch (ip6_privacy) {
-    case NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN:
     case NM_SETTING_IP6_CONFIG_PRIVACY_DISABLED:
         return "0";
     case NM_SETTING_IP6_CONFIG_PRIVACY_PREFER_PUBLIC_ADDR:
         return "1";
     case NM_SETTING_IP6_CONFIG_PRIVACY_PREFER_TEMP_ADDR:
         return "2";
-    default:
-        g_return_val_if_reached("0");
+    case NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN:
+        break;
     }
+    return nm_assert_unreachable_val("0");
+}
+
+static void
+_l3_commit_ip6_privacy(NML3Cfg *self, NML3CfgCommitType commit_type)
+{
+    NMSettingIP6ConfigPrivacy ip6_privacy;
+    NMSettingIP6ConfigPrivacy ip6_privacy_set_before;
+    const char *              ifname;
+
+    if (commit_type < NM_L3_CFG_COMMIT_TYPE_UPDATE)
+        ip6_privacy = NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN;
+    else
+        ip6_privacy = nm_l3_config_data_get_ip6_privacy(self->priv.p->combined_l3cd_commited);
+
+    if (ip6_privacy == NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN) {
+        if (!self->priv.p->ip6_privacy_set) {
+            /* Nothing to set. But do we need to reset a previous value? */
+            return;
+        }
+        self->priv.p->ip6_privacy_set = FALSE;
+        ip6_privacy                   = self->priv.p->ip6_privacy_initial;
+        ifname                        = nm_l3cfg_get_ifname(self, TRUE);
+        _LOGT("commit-ip6-privacy: reset initial value %d (was %d)%s%s",
+              (int) ip6_privacy,
+              (int) self->priv.p->ip6_privacy_set_before,
+              NM_PRINT_FMT_QUOTED2(ifname, ", ifname ", ifname, " (skip, no interface)"));
+        if (ip6_privacy == NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN)
+            return;
+        if (!ifname)
+            return;
+        goto set;
+    }
+
+    nm_assert(NM_IN_SET(ip6_privacy,
+                        NM_SETTING_IP6_CONFIG_PRIVACY_DISABLED,
+                        NM_SETTING_IP6_CONFIG_PRIVACY_PREFER_PUBLIC_ADDR,
+                        NM_SETTING_IP6_CONFIG_PRIVACY_PREFER_TEMP_ADDR));
+
+    if (self->priv.p->ip6_privacy_set && self->priv.p->ip6_privacy_set_before == ip6_privacy
+        && commit_type < NM_L3_CFG_COMMIT_TYPE_REAPPLY) {
+        /* Already set. We leave this alone except during reapply. */
+        return;
+    }
+
+    ip6_privacy_set_before               = self->priv.p->ip6_privacy_set_before;
+    self->priv.p->ip6_privacy_set_before = ip6_privacy;
+
+    if (!self->priv.p->ip6_privacy_set) {
+        gint64 s = G_MININT64;
+
+        self->priv.p->ip6_privacy_set = TRUE;
+        ifname                        = nm_l3cfg_get_ifname(self, TRUE);
+        if (ifname) {
+            s = nm_platform_sysctl_ip_conf_get_int_checked(self->priv.platform,
+                                                           AF_INET6,
+                                                           ifname,
+                                                           "use_tempaddr",
+                                                           10,
+                                                           G_MININT32,
+                                                           G_MAXINT32,
+                                                           G_MININT64);
+            if (s != G_MININT64)
+                s = NM_CLAMP(s, 0, 2);
+        }
+        switch (s) {
+        case 0:
+            self->priv.p->ip6_privacy_initial = NM_SETTING_IP6_CONFIG_PRIVACY_DISABLED;
+            break;
+        case 1:
+            self->priv.p->ip6_privacy_initial = NM_SETTING_IP6_CONFIG_PRIVACY_PREFER_PUBLIC_ADDR;
+            break;
+        case 2:
+            self->priv.p->ip6_privacy_initial = NM_SETTING_IP6_CONFIG_PRIVACY_PREFER_TEMP_ADDR;
+            break;
+        default:
+            nm_assert_not_reached();
+            /* fall-through */
+        case G_MININT64:
+            self->priv.p->ip6_privacy_initial = NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN;
+            break;
+        }
+        _LOGT("commit-ip6-privacy: set value %d (initial value was %d)%s%s",
+              (int) ip6_privacy,
+              (int) self->priv.p->ip6_privacy_initial,
+              NM_PRINT_FMT_QUOTED2(ifname, ", ifname ", ifname, " (skip, no interface)"));
+        if (!ifname)
+            return;
+        /* The first time, we always set the value, and don't skip it based on what we
+         * read. */
+        goto set;
+    }
+
+    ifname = nm_l3cfg_get_ifname(self, TRUE);
+    _LOGT("commit-ip6-privacy: set value %d (after %d, initial value was %d)%s%s",
+          (int) ip6_privacy,
+          (int) ip6_privacy_set_before,
+          (int) self->priv.p->ip6_privacy_initial,
+          NM_PRINT_FMT_QUOTED2(ifname, ", ifname ", ifname, " (skip, no interface)"));
+    if (!ifname)
+        return;
+
+set:
+    nm_assert(ifname);
+    self->priv.p->ip6_privacy_set_before = ip6_privacy;
+    nm_platform_sysctl_ip_conf_set(self->priv.platform,
+                                   AF_INET6,
+                                   ifname,
+                                   "use_tempaddr",
+                                   ip6_privacy_to_str(ip6_privacy));
 }
 
 static gboolean
@@ -3775,13 +3894,11 @@ _l3_commit_one(NML3Cfg *             self,
           _l3_cfg_commit_type_to_string(commit_type, sbuf_commit_type, sizeof(sbuf_commit_type)));
 
     if (self->priv.p->combined_l3cd_commited) {
-        NMSettingIP6ConfigPrivacy     ip6_privacy;
         const NMDedupMultiHeadEntry * head_entry;
         const ObjStatesSyncFilterData sync_filter_data = {
             .self        = self,
             .commit_type = commit_type,
         };
-        const char *ifname;
 
         head_entry = nm_l3_config_data_lookup_objs(self->priv.p->combined_l3cd_commited,
                                                    NMP_OBJECT_TYPE_IP_ADDRESS(IS_IPv4));
@@ -3798,23 +3915,10 @@ _l3_commit_one(NML3Cfg *             self,
         route_table_sync =
             nm_l3_config_data_get_route_table_sync(self->priv.p->combined_l3cd_commited,
                                                    addr_family);
-
-        ifname = nm_platform_link_get_name(self->priv.platform, self->priv.ifindex);
-
-        if (!IS_IPv4) {
-            ip6_privacy = nm_l3_config_data_get_ip6_privacy(self->priv.p->combined_l3cd_commited);
-            if (self->priv.p->ip6_privacy != ip6_privacy) {
-                self->priv.p->ip6_privacy = ip6_privacy;
-                if (ifname && ip6_privacy != NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN) {
-                    nm_platform_sysctl_ip_conf_set(self->priv.platform,
-                                                   addr_family,
-                                                   ifname,
-                                                   "use_tempaddr",
-                                                   ip6_privacy_to_str(ip6_privacy));
-                }
-            }
-        }
     }
+
+    if (!IS_IPv4)
+        _l3_commit_ip6_privacy(self, commit_type);
 
     if (route_table_sync == NM_IP_ROUTE_TABLE_SYNC_MODE_NONE)
         route_table_sync = NM_IP_ROUTE_TABLE_SYNC_MODE_ALL;

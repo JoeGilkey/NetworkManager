@@ -1792,7 +1792,10 @@ nm_l3_config_data_set_ip6_mtu(NML3ConfigData *self, guint32 ip6_mtu)
 NMSettingIP6ConfigPrivacy
 nm_l3_config_data_get_ip6_privacy(const NML3ConfigData *self)
 {
-    nm_assert(_NM_IS_L3_CONFIG_DATA(self, TRUE));
+    nm_assert(!self || _NM_IS_L3_CONFIG_DATA(self, TRUE));
+
+    if (!self)
+        return NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN;
 
     return self->ip6_privacy;
 }
