@@ -3151,6 +3151,11 @@ _dev_ip_state_check(NMDevice *self, int addr_family)
             s_is_failed = TRUE;
     }
 
+    _device_ip_state_accumulate(priv->ipshared_data_x[IS_IPv4].state,
+                                &s_is_started,
+                                &s_is_pending,
+                                &s_is_failed);
+
     _device_ip_state_accumulate(priv->ipdev_data_x[IS_IPv4].state,
                                 &s_is_started,
                                 &s_is_pending,
