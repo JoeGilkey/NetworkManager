@@ -607,7 +607,7 @@ typedef struct _NMDevicePrivate {
     struct {
         GSource *carrier_timeout;
         union {
-            union {
+            struct {
                 NMDeviceIPState state_6;
                 NMDeviceIPState state_4;
             };
