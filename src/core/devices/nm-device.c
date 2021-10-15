@@ -3256,7 +3256,11 @@ got_ip_state:
     else if (ip_state == NM_DEVICE_IP_STATE_FAILED
              && !_prop_get_ipvx_may_fail_cached(self, addr_family, &may_fail))
         combinedip_state = NM_DEVICE_IP_STATE_FAILED;
-    else {
+    else if (ip_state == NM_DEVICE_IP_STATE_FAILED && ip_state_other == NM_DEVICE_IP_STATE_FAILED) {
+        /* If both IP states fail, then it's a failure for good. may-fail does not mean that
+         * both families may fail, instead it means that at least one family must succeed. */
+        combinedip_state = NM_DEVICE_IP_STATE_FAILED;
+    } else {
         if (priv->ip_data.state == NM_DEVICE_IP_STATE_NONE)
             combinedip_state = NM_DEVICE_IP_STATE_PENDING;
         else
