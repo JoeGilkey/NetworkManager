@@ -277,8 +277,15 @@ typedef struct _NML3CfgPrivate {
      * repeatedly try to commit the same value. */
     NMSettingIP6ConfigPrivacy ip6_privacy_set_before : 4;
 
+    guint32 ndisc_retrans_timer_msec;
+    guint32 ndisc_reachable_time_msec;
+    int     ndisc_hop_limit;
+
     /* Whether "self" set the ip6_privacy sysctl (and whether it needs to be reset). */
     bool ip6_privacy_set : 1;
+    bool ndisc_reachable_time_msec_set : 1;
+    bool ndisc_retrans_timer_msec_set : 1;
+    bool ndisc_hop_limit_set : 1;
 
     bool commit_type_update_sticky : 1;
 
@@ -3759,6 +3766,69 @@ ip6_privacy_to_str(NMSettingIP6ConfigPrivacy ip6_privacy)
 }
 
 static void
+_l3_commit_ndisc_params(NML3Cfg *self, NML3CfgCommitType commit_type)
+{
+    const NML3ConfigData *l3cd;
+    gboolean              retrans_set   = FALSE;
+    gboolean              reachable_set = FALSE;
+    gboolean              hop_limit_set = FALSE;
+    guint32               reachable;
+    guint32               retrans;
+    int                   hop_limit;
+    const char *          ifname;
+
+    if (commit_type < NM_L3_CFG_COMMIT_TYPE_UPDATE) {
+        self->priv.p->ndisc_reachable_time_msec_set = FALSE;
+        self->priv.p->ndisc_retrans_timer_msec_set  = FALSE;
+        self->priv.p->ndisc_hop_limit_set           = FALSE;
+        return;
+    }
+
+    l3cd = self->priv.p->combined_l3cd_commited;
+    if (l3cd) {
+        reachable_set = nm_l3_config_data_get_ndisc_reachable_time_msec(l3cd, &reachable);
+        retrans_set   = nm_l3_config_data_get_ndisc_retrans_timer_msec(l3cd, &retrans);
+        hop_limit     = nm_l3_config_data_get_ndisc_hop_limit(l3cd, &hop_limit);
+    }
+    ifname = nm_l3cfg_get_ifname(self, TRUE);
+
+    if (reachable_set
+        && (!self->priv.p->ndisc_reachable_time_msec_set
+            || self->priv.p->ndisc_reachable_time_msec != reachable)) {
+        self->priv.p->ndisc_reachable_time_msec     = reachable;
+        self->priv.p->ndisc_reachable_time_msec_set = TRUE;
+        if (ifname) {
+            nm_platform_sysctl_ip_neigh_set_ipv6_reachable_time(self->priv.platform,
+                                                                ifname,
+                                                                reachable);
+        }
+    }
+
+    if (retrans_set
+        && (!self->priv.p->ndisc_retrans_timer_msec_set
+            || self->priv.p->ndisc_reachable_time_msec != retrans)) {
+        self->priv.p->ndisc_retrans_timer_msec     = retrans;
+        self->priv.p->ndisc_retrans_timer_msec_set = TRUE;
+        if (ifname) {
+            nm_platform_sysctl_ip_neigh_set_ipv6_retrans_time(self->priv.platform, ifname, retrans);
+        }
+    }
+
+    if (hop_limit_set
+        && (!self->priv.p->ndisc_hop_limit_set || self->priv.p->ndisc_hop_limit != hop_limit)) {
+        self->priv.p->ndisc_hop_limit     = hop_limit;
+        self->priv.p->ndisc_hop_limit_set = TRUE;
+        if (ifname) {
+            nm_platform_sysctl_ip_conf_set_ipv6_hop_limit_safe(self->priv.platform,
+                                                               ifname,
+                                                               hop_limit);
+        }
+    }
+
+    // FIXME: restore values if necessary
+}
+
+static void
 _l3_commit_ip6_privacy(NML3Cfg *self, NML3CfgCommitType commit_type)
 {
     NMSettingIP6ConfigPrivacy ip6_privacy;
@@ -3921,8 +3991,10 @@ _l3_commit_one(NML3Cfg *             self,
                                                    addr_family);
     }
 
-    if (!IS_IPv4)
+    if (!IS_IPv4) {
         _l3_commit_ip6_privacy(self, commit_type);
+        _l3_commit_ndisc_params(self, commit_type);
+    }
 
     if (route_table_sync == NM_IP_ROUTE_TABLE_SYNC_MODE_NONE)
         route_table_sync = NM_IP_ROUTE_TABLE_SYNC_MODE_ALL;
