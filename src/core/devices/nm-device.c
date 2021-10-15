@@ -250,6 +250,7 @@ typedef struct {
             NMNetnsSharedIPHandle *shared_ip_handle;
             NMFirewallConfig *     firewall_config;
             gulong                 dnsmasq_state_id;
+            const NML3ConfigData * l3cd;
         } v4;
         struct {
         } v6;
@@ -826,6 +827,7 @@ static void _dev_ipac6_start(NMDevice *self);
 static void _dev_unamanged_check_external_down(NMDevice *self, gboolean only_if_unmanaged);
 
 static void _dev_ipshared4_start(NMDevice *self);
+static void _dev_ipshared4_spawn_dnsmasq(NMDevice *self);
 
 static void _dev_ipshared6_start(NMDevice *self);
 
@@ -3830,6 +3832,11 @@ _dev_l3_cfg_notify_cb(NML3Cfg *l3cfg, const NML3ConfigNotifyData *notify_data, N
         return;
     }
     case NM_L3_CONFIG_NOTIFY_TYPE_POST_COMMIT:
+        if (priv->ipshared_data_4.state == NM_DEVICE_IP_STATE_PENDING
+            && !priv->ipshared_data_4.v4.dnsmasq_manager && priv->ipshared_data_4.v4.l3cd) {
+            _dev_ipshared4_spawn_dnsmasq(self);
+            nm_clear_l3cd(&priv->ipshared_data_4.v4.l3cd);
+        }
         _dev_ipmanual_check_ready(self);
         return;
     case NM_L3_CONFIG_NOTIFY_TYPE_IPV4LL_EVENT:
@@ -11765,6 +11772,7 @@ _dev_ipsharedx_cleanup(NMDevice *self, int addr_family)
         }
 
         nm_clear_pointer(&priv->ipshared_data_4.v4.shared_ip_handle, nm_netns_shared_ip_release);
+        nm_clear_l3cd(&priv->ipshared_data_4.v4.l3cd);
     }
 
     _dev_ipsharedx_set_state(self, addr_family, NM_DEVICE_IP_STATE_NONE);
@@ -11878,8 +11886,6 @@ _dev_ipshared4_start(NMDevice *self)
     NMDevicePrivate *                        priv = NM_DEVICE_GET_PRIVATE(self);
     const char *                             ip_iface;
     gs_free_error GError *error = NULL;
-    NMSettingConnection * s_con;
-    gboolean              announce_android_metered;
     NMConnection *        applied;
 
     if (priv->ipshared_data_4.state != NM_DEVICE_IP_STATE_NONE)
@@ -11910,6 +11916,36 @@ _dev_ipshared4_start(NMDevice *self)
         nm_firewall_config_new(ip_iface, ip4_addr.address, ip4_addr.plen);
     nm_firewall_config_apply(priv->ipshared_data_4.v4.firewall_config, TRUE);
 
+    priv->ipshared_data_4.v4.l3cd = nm_l3_config_data_ref(l3cd);
+    _dev_l3_register_l3cds_set_one(self, L3_CONFIG_DATA_TYPE_SHARED_4, l3cd, FALSE);
+
+    /* Wait that the address gets committed before spawning dnsmasq */
+    return;
+out_fail:
+    _dev_ipsharedx_set_state(self, AF_INET, NM_DEVICE_IP_STATE_FAILED);
+    _dev_ip_state_check_async(self, AF_INET);
+}
+
+static void
+_dev_ipshared4_spawn_dnsmasq(NMDevice *self)
+{
+    NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE(self);
+    const char *     ip_iface;
+    gs_free_error GError *error = NULL;
+    NMSettingConnection * s_con;
+    gboolean              announce_android_metered;
+    NMConnection *        applied;
+
+    nm_assert(priv->ipshared_data_4.v4.firewall_config);
+    nm_assert(priv->ipshared_data_4.v4.dnsmasq_state_id == 0);
+    nm_assert(!priv->ipshared_data_4.v4.dnsmasq_manager);
+    nm_assert(priv->ipshared_data_4.v4.l3cd);
+
+    ip_iface = nm_device_get_ip_iface(self);
+    g_return_if_fail(ip_iface);
+
+    applied = nm_device_get_applied_connection(self);
+    g_return_if_fail(applied);
     s_con = nm_connection_get_setting_connection(applied);
 
     switch (nm_setting_connection_get_metered(s_con)) {
@@ -11933,9 +11969,8 @@ _dev_ipshared4_start(NMDevice *self)
     }
 
     priv->ipshared_data_4.v4.dnsmasq_manager = nm_dnsmasq_manager_new(ip_iface);
-
     if (!nm_dnsmasq_manager_start(priv->ipshared_data_4.v4.dnsmasq_manager,
-                                  l3cd,
+                                  priv->ipshared_data_4.v4.l3cd,
                                   announce_android_metered,
                                   &error)) {
         _LOGW_ipshared(AF_INET, "could not start dnsmasq: %s", error->message);
@@ -11948,7 +11983,6 @@ _dev_ipshared4_start(NMDevice *self)
                          G_CALLBACK(_dev_ipshared4_dnsmasq_state_changed_cb),
                          self);
 
-    _dev_l3_register_l3cds_set_one(self, L3_CONFIG_DATA_TYPE_SHARED_4, l3cd, FALSE);
     _dev_ip_state_check_async(self, AF_INET);
     return;
 
