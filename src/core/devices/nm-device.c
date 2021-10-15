@@ -771,6 +771,7 @@ static void     nm_device_slave_notify_release(NMDevice *self, NMDeviceStateReas
 static void _dev_ipll6_start(NMDevice *self);
 
 static void _dev_ipac6_start_continue(NMDevice *self);
+static void _dev_ipac6_ndisc_set_router_config(NMDevice *self);
 
 static guint32 _dev_default_route_metric_penalty_get(NMDevice *self, int addr_family);
 
@@ -10339,6 +10340,7 @@ nm_device_use_ip6_subnet(NMDevice *self, const NMPlatformIP6Address *subnet)
 
     _dev_l3_register_l3cds_set_one(self, L3_CONFIG_DATA_TYPE_PD_6, l3cd, FALSE);
     _dev_l3_cfg_commit(self, TRUE);
+    _dev_ipac6_ndisc_set_router_config(self);
 }
 
 /*
