@@ -925,13 +925,13 @@ nm_modem_act_stage1_prepare(NMModem *            self,
 
     g_return_val_if_fail(NM_IS_ACT_REQUEST(req), NM_ACT_STAGE_RETURN_FAILURE);
 
+    nm_g_object_ref_set(&priv->act_req, req);
     device = nm_active_connection_get_device(NM_ACTIVE_CONNECTION(priv->act_req));
     g_return_val_if_fail(NM_IS_DEVICE(device), NM_ACT_STAGE_RETURN_FAILURE);
 
     connection = nm_act_request_get_applied_connection(req);
     g_return_val_if_fail(connection, NM_ACT_STAGE_RETURN_FAILURE);
 
-    nm_g_object_ref_set(&priv->act_req, req);
     nm_g_object_ref_set(&priv->device, device);
 
     setting_name = nm_connection_need_secrets(connection, &hints);
