@@ -14204,7 +14204,7 @@ nm_device_update_metered(NMDevice *self)
             const NML3ConfigData *l3cd;
 
             l3cd = nm_l3cfg_get_combined_l3cd(priv->l3cfg, TRUE);
-            if (l3cd && nm_l3_config_data_get_metered(l3cd))
+            if (l3cd && nm_l3_config_data_get_metered(l3cd) == NM_TERNARY_TRUE)
                 value = NM_METERED_GUESS_YES;
         }
     }
