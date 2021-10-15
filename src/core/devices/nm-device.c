@@ -3250,7 +3250,11 @@ got_ip_state:
                                                       nm_utils_addr_family_other(addr_family),
                                                       &may_fail_other)))
         combinedip_state = NM_DEVICE_IP_STATE_PENDING;
-    else if (ip_state == NM_DEVICE_IP_STATE_READY && ip_state_other == NM_DEVICE_IP_STATE_PENDING
+    else if (ip_state == NM_DEVICE_IP_STATE_READY
+             && NM_IN_SET(ip_state_other,
+                          NM_DEVICE_IP_STATE_PENDING,
+                          NM_DEVICE_IP_STATE_READY,
+                          NM_DEVICE_IP_STATE_FAILED)
              && _prop_get_ipvx_may_fail_cached(self,
                                                nm_utils_addr_family_other(addr_family),
                                                &may_fail_other))
