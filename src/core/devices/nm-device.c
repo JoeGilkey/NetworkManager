@@ -9830,6 +9830,7 @@ _dev_ipdhcpx_handle_accept(NMDevice *self, int addr_family, const NML3ConfigData
 
     nm_assert(NM_IS_L3_CONFIG_DATA(l3cd));
 
+    nm_dhcp_config_set_lease(priv->ipdhcp_data_x[IS_IPv4].config, l3cd);
     _dev_l3_register_l3cds_set_one(self, L3_CONFIG_DATA_TYPE_DHCP_X(IS_IPv4), l3cd, TRUE);
 
     /* FIXME(l3cfg:dhcp): accept also should be handled by NMDhcpClient transparently.
@@ -9862,7 +9863,6 @@ _dev_ipdhcpx_handle_accept(NMDevice *self, int addr_family, const NML3ConfigData
     }
 
     _dev_ipdhcpx_set_state(self, addr_family, NM_DEVICE_IP_STATE_READY);
-    nm_dhcp_config_set_lease(priv->ipdhcp_data_x[IS_IPv4].config, l3cd);
 
     nm_dispatcher_call_device(NM_DISPATCHER_ACTION_DHCP_CHANGE_X(IS_IPv4),
                               self,
