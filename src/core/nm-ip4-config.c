@@ -139,12 +139,15 @@ _nm_ip_config_add_obj(NMDedupMultiIndex *          multi_idx,
                                                          NMP_OBJECT_CAST_IP_ADDRESS(obj_new))
                            > 0) {
                     obj_new = nmp_object_stackinit_obj(&obj_new_stackinit, obj_new);
-                    obj_new_stackinit.ip_address.timestamp =
-                        NMP_OBJECT_CAST_IP_ADDRESS(obj_old)->timestamp;
-                    obj_new_stackinit.ip_address.lifetime =
-                        NMP_OBJECT_CAST_IP_ADDRESS(obj_old)->lifetime;
-                    obj_new_stackinit.ip_address.preferred =
-                        NMP_OBJECT_CAST_IP_ADDRESS(obj_old)->preferred;
+		    if (obj_new_stackinit.ip_address.timestamp != NM_PLATFORM_LIFETIME_PERMANENT)
+                        obj_new_stackinit.ip_address.timestamp =
+                            NMP_OBJECT_CAST_IP_ADDRESS(obj_old)->timestamp;
+		    if (obj_new_stackinit.ip_address.lifetime != NM_PLATFORM_LIFETIME_PERMANENT)
+                        obj_new_stackinit.ip_address.lifetime =
+                            NMP_OBJECT_CAST_IP_ADDRESS(obj_old)->lifetime;
+		    if (obj_new_stackinit.ip_address.preferred != NM_PLATFORM_LIFETIME_PERMANENT)
+                        obj_new_stackinit.ip_address.preferred =
+                            NMP_OBJECT_CAST_IP_ADDRESS(obj_old)->preferred;
                     modified = TRUE;
                 }
 
