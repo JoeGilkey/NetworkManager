@@ -2785,13 +2785,13 @@ do_device_set(const NMCCommand *cmd, NmCli *nmc, int argc, const char *const *ar
      * are specified on the command line. */
     if (values[DEV_SET_AUTOCONNECT].idx >= 0 && values[DEV_SET_MANAGED].idx >= 0
         && values[DEV_SET_MANAGED].idx < values[DEV_SET_AUTOCONNECT].idx) {
-        nm_device_set_managed(device, values[DEV_SET_MANAGED].value);
+        //nm_device_set_managed(device, values[DEV_SET_MANAGED].value);
         values[DEV_SET_MANAGED].idx = -1;
     }
     if (values[DEV_SET_AUTOCONNECT].idx >= 0)
         nm_device_set_autoconnect(device, values[DEV_SET_AUTOCONNECT].value);
-    if (values[DEV_SET_MANAGED].idx >= 0)
-        nm_device_set_managed(device, values[DEV_SET_MANAGED].value);
+    //if (values[DEV_SET_MANAGED].idx >= 0)
+        //nm_device_set_managed(device, values[DEV_SET_MANAGED].value);
 }
 
 static void
