@@ -53,6 +53,7 @@ typedef struct {
     NDhcp4ClientLease *lease;
     GSource *          event_source;
     char *             lease_file;
+    gint64             start_time_msec;
 } NMDhcpNettoolsPrivate;
 
 struct _NMDhcpNettools {
@@ -788,6 +789,12 @@ bound4_handle(NMDhcpNettools *self, NDhcp4ClientLease *lease, gboolean extended)
                              l3cd);
 }
 
+static gboolean
+should_log(NMDhcpNettools *self)
+{
+    return nm_dhcp_client_get_ifindex(NM_DHCP_CLIENT(self)) % 10 == 0;
+}
+
 static void
 dhcp4_event_handle(NMDhcpNettools *self, NDhcp4ClientEvent *event)
 {
@@ -802,6 +809,11 @@ dhcp4_event_handle(NMDhcpNettools *self, NDhcp4ClientEvent *event)
 
     switch (event->event) {
     case N_DHCP4_CLIENT_EVENT_OFFER:
+        if (priv->start_time_msec != 0 && should_log(self)) {
+            _LOGE("got offer after %ld msec",
+                  (long) (nm_utils_get_monotonic_timestamp_msec() - priv->start_time_msec));
+        }
+
         r = n_dhcp4_client_lease_get_server_identifier(event->offer.lease, &server_id);
         if (r) {
             _LOGW("selecting lease failed: %d", r);
@@ -828,10 +840,18 @@ dhcp4_event_handle(NMDhcpNettools *self, NDhcp4ClientEvent *event)
         nm_dhcp_client_set_state(NM_DHCP_CLIENT(self), NM_DHCP_STATE_FAIL, NULL);
         break;
     case N_DHCP4_CLIENT_EVENT_GRANTED:
+        if (should_log(self)) {
+            _LOGE("got lease after %ld msec",
+                  (long) (nm_utils_get_monotonic_timestamp_msec() - priv->start_time_msec));
+        }
         priv->lease = n_dhcp4_client_lease_ref(event->granted.lease);
         bound4_handle(self, event->granted.lease, FALSE);
         break;
     case N_DHCP4_CLIENT_EVENT_EXTENDED:
+        if (should_log(self)) {
+            _LOGE("got renew after %ld msec",
+                  (long) (nm_utils_get_monotonic_timestamp_msec() - priv->start_time_msec));
+        }
         bound4_handle(self, event->extended.lease, TRUE);
         break;
     case N_DHCP4_CLIENT_EVENT_DOWN:
@@ -842,6 +862,13 @@ dhcp4_event_handle(NMDhcpNettools *self, NDhcp4ClientEvent *event)
         NMLogLevel nm_level;
 
         nm_level = nm_log_level_from_syslog(event->log.level);
+
+        if ((NM_STR_HAS_PREFIX(event->log.message, "send ")
+             || NM_STR_HAS_PREFIX(event->log.message, "received "))
+            && should_log(self)) {
+            nm_level = LOGL_WARN;
+        }
+
         if (nm_logging_enabled(nm_level, LOGD_DHCP4)) {
             nm_log(nm_level,
                    LOGD_DHCP4,
@@ -979,11 +1006,12 @@ nettools_create(NMDhcpNettools *self, GError **error)
     client       = NULL;
 
     n_dhcp4_client_set_log_level(priv->client,
-                                 nm_log_level_to_syslog(nm_logging_get_level(LOGD_DHCP4)));
+                                 nm_log_level_to_syslog(LOGL_DEBUG));
 
     n_dhcp4_client_get_fd(priv->client, &fd);
 
     priv->event_source = nm_g_unix_fd_add_source(fd, G_IO_IN, dhcp4_event_cb, self);
+    priv->start_time_msec = nm_utils_get_monotonic_timestamp_msec();
 
     return TRUE;
 }
